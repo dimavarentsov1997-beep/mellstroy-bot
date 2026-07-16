@@ -17,8 +17,8 @@ logging.basicConfig(level=logging.INFO)
 # ===== НАСТРОЙКИ =====
 TOKEN = "8838743887:AAGwl6r4X_ZlTgRcD4a0ezlky9Mawc_cGXE"
 OWNER_ID = 5209929082
-CHANNEL_USERNAME = "@Mellstroysounds"
-CHANNEL_URL = "https://t.me/Mellstroysounds"
+CHANNEL_USERNAME = "@MellstroySounds"
+CHANNEL_URL = "https://t.me/MellstroySounds"
 
 # ===== БАЗА ДАННЫХ =====
 def init_db():
@@ -508,29 +508,42 @@ async def get_name(message: types.Message, state: FSMContext):
     await state.update_data(name=message.text.strip())
     await message.answer("📁 Отправь звук (MP3, аудио, голосовое)")
     await state.set_state(AddSound.waiting_for_file)
-
+    
 @router.message(AddSound.waiting_for_file)
-async def get_file(message: types.Message, state: FSMContext):
+async def get_file(message: types.Message, state: FSMContext, bot: Bot):
     file_id = None
     
     if message.voice:
         file_id = message.voice.file_id
     elif message.audio:
-        file_id = message.audio.file_id
+        await message.answer("⏳ Конвертирую в голосовое...")
+        sent_msg = await bot.send_voice(
+            chat_id=message.chat.id,
+            voice=message.audio.file_id
+        )
+        file_id = sent_msg.voice.file_id
+        await sent_msg.delete()
     elif message.document:
-        file_id = message.document.file_id
-    elif message.video_note:
-        file_id = message.video_note.file_id
+        if message.document.mime_type and 'audio' in message.document.mime_type:
+            await message.answer("⏳ Конвертирую в голосовое...")
+            sent_msg = await bot.send_voice(
+                chat_id=message.chat.id,
+                voice=message.document.file_id
+            )
+            file_id = sent_msg.voice.file_id
+            await sent_msg.delete()
+        else:
+            file_id = message.document.file_id
     
     if not file_id:
-        await message.answer("❌ Отправь голосовое, аудио или MP3 файл!")
+        await message.answer("❌ Отправь MP3/аудио или голосовое!")
         return
     
     data = await state.get_data()
     name = data['name']
     
     add_sound(name, file_id, message.from_user.id)
-    await message.answer(f"✅ Звук '{name}' добавлен!\nПроверь: @MellstroyMP3_bot {name}")
+    await message.answer(f"✅ Звук '{name}' добавлен как голосовое!\nПроверь: @MellstroyMP3_bot {name}")
     await state.clear()
 
 # ===== ДОБАВЛЕНИЕ АДМИНА =====
