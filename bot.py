@@ -6,7 +6,7 @@ from aiogram import Bot, Dispatcher, types, Router, F
 from aiogram.filters import Command
 from aiogram.types import (
     InlineQueryResultCachedVoice, InlineKeyboardMarkup, 
-    InlineKeyboardButton, Message
+    InlineKeyboardButton
 )
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
@@ -14,17 +14,21 @@ from aiogram.fsm.storage.memory import MemoryStorage
 
 logging.basicConfig(level=logging.INFO)
 
-# ===== НАСТРОЙКИ =====
+# ===== НАСТРОЙКИ (ЗАМЕНИ НА СВОИ) =====
 TOKEN = "8838743887:AAGwl6r4X_ZlTgRcD4a0ezlky9Mawc_cGXE"
-OWNER_ID = 5209929082
+OWNER_ID = 5209929082  # твой Telegram ID
 CHANNEL_USERNAME = "@MellstroySounds"
 CHANNEL_URL = "https://t.me/MellstroySounds"
 
+# Путь к базе данных (для Railway Volume используй /app/data/sounds.db)
+DB_PATH = "sounds.db"  # если не используешь Volume, оставь так
+
 # ===== БАЗА ДАННЫХ =====
 def init_db():
-    conn = sqlite3.connect('sounds.db')
+    conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     
+    # Таблица звуков
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS sounds (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -35,21 +39,14 @@ def init_db():
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     ''')
+    # Добавление колонок, если их нет (для старых баз)
+    for col in ['added_by', 'usage_count', 'created_at']:
+        try:
+            cursor.execute(f'ALTER TABLE sounds ADD COLUMN {col} INTEGER DEFAULT 0')
+        except:
+            pass
     
-    # Добавляем колонки если их нет (для старых баз)
-    try:
-        cursor.execute('ALTER TABLE sounds ADD COLUMN added_by INTEGER')
-    except:
-        pass
-    try:
-        cursor.execute('ALTER TABLE sounds ADD COLUMN usage_count INTEGER DEFAULT 0')
-    except:
-        pass
-    try:
-        cursor.execute('ALTER TABLE sounds ADD COLUMN created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP')
-    except:
-        pass
-    
+    # Таблица админов
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS admins (
             user_id INTEGER PRIMARY KEY,
@@ -60,6 +57,7 @@ def init_db():
         )
     ''')
     
+    # Таблица пользователей
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS users (
             user_id INTEGER PRIMARY KEY,
@@ -70,15 +68,16 @@ def init_db():
         )
     ''')
     
+    # Владелец как админ 4 уровня
     cursor.execute('INSERT OR IGNORE INTO admins (user_id, username, level) VALUES (?, ?, ?)',
                    (OWNER_ID, 'OWNER', 4))
     
     conn.commit()
     conn.close()
-    print("✅ База готова")
-    
+    print("✅ База данных готова")
+
 def add_sound(name, file_id, added_by):
-    conn = sqlite3.connect('sounds.db')
+    conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute('INSERT INTO sounds (name, file_id, added_by) VALUES (?, ?, ?)',
                    (name, file_id, added_by))
@@ -86,7 +85,7 @@ def add_sound(name, file_id, added_by):
     conn.close()
 
 def search_sounds(query):
-    conn = sqlite3.connect('sounds.db')
+    conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute('SELECT id, name, file_id FROM sounds WHERE LOWER(name) LIKE LOWER(?) ORDER BY usage_count DESC LIMIT 50',
                    (f'%{query}%',))
@@ -95,7 +94,7 @@ def search_sounds(query):
     return results
 
 def get_all_sounds():
-    conn = sqlite3.connect('sounds.db')
+    conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute('SELECT id, name, file_id FROM sounds ORDER BY usage_count DESC')
     results = cursor.fetchall()
@@ -103,21 +102,21 @@ def get_all_sounds():
     return results
 
 def delete_sound(sound_id):
-    conn = sqlite3.connect('sounds.db')
+    conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute('DELETE FROM sounds WHERE id = ?', (sound_id,))
     conn.commit()
     conn.close()
 
 def increment_usage(sound_id):
-    conn = sqlite3.connect('sounds.db')
+    conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute('UPDATE sounds SET usage_count = usage_count + 1 WHERE id = ?', (sound_id,))
     conn.commit()
     conn.close()
 
 def add_admin(user_id, username, level, added_by):
-    conn = sqlite3.connect('sounds.db')
+    conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute('INSERT OR REPLACE INTO admins (user_id, username, level, added_by) VALUES (?, ?, ?, ?)',
                    (user_id, username, level, added_by))
@@ -125,7 +124,7 @@ def add_admin(user_id, username, level, added_by):
     conn.close()
 
 def remove_admin(user_id):
-    conn = sqlite3.connect('sounds.db')
+    conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute('DELETE FROM admins WHERE user_id = ? AND user_id != ?', (user_id, OWNER_ID))
     conn.commit()
@@ -134,7 +133,7 @@ def remove_admin(user_id):
 def get_admin_level(user_id):
     if user_id == OWNER_ID:
         return 4
-    conn = sqlite3.connect('sounds.db')
+    conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute('SELECT level FROM admins WHERE user_id = ?', (user_id,))
     result = cursor.fetchone()
@@ -142,7 +141,7 @@ def get_admin_level(user_id):
     return result[0] if result else 0
 
 def get_all_admins():
-    conn = sqlite3.connect('sounds.db')
+    conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute('SELECT user_id, username, level FROM admins ORDER BY level DESC')
     results = cursor.fetchall()
@@ -150,15 +149,15 @@ def get_all_admins():
     return results
 
 def add_user(user_id, username, first_name):
-    conn = sqlite3.connect('sounds.db')
+    conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute('INSERT OR REPLACE INTO users (user_id, username, first_name, last_activity, subscribed) VALUES (?, ?, ?, ?, ?)',
-                   (user_id, username, first_name, datetime.now(), True))
+                   (user_id, username, first_name, datetime.now(), False))
     conn.commit()
     conn.close()
 
 def get_users_count():
-    conn = sqlite3.connect('sounds.db')
+    conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute('SELECT COUNT(*) FROM users')
     count = cursor.fetchone()[0]
@@ -166,7 +165,7 @@ def get_users_count():
     return count
 
 def get_all_users():
-    conn = sqlite3.connect('sounds.db')
+    conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute('SELECT user_id FROM users')
     results = cursor.fetchall()
@@ -174,7 +173,7 @@ def get_all_users():
     return [row[0] for row in results]
 
 def get_stats():
-    conn = sqlite3.connect('sounds.db')
+    conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute('SELECT COUNT(*) FROM sounds')
     sounds_count = cursor.fetchone()[0]
@@ -185,7 +184,7 @@ def get_stats():
     conn.close()
     return sounds_count, users_count, admins_count
 
-# ===== СОСТОЯНИЯ =====
+# ===== СОСТОЯНИЯ FSM =====
 class AddSound(StatesGroup):
     waiting_for_name = State()
     waiting_for_file = State()
@@ -207,14 +206,12 @@ def admin_keyboard(level):
         [InlineKeyboardButton(text="📋 Все звуки", callback_data="list_sounds")],
         [InlineKeyboardButton(text="📊 Статистика", callback_data="stats")]
     ]
-    
     if level >= 2:
         buttons.append([InlineKeyboardButton(text="🗑 Удалить звук", callback_data="delete_menu")])
     if level >= 3:
         buttons.append([InlineKeyboardButton(text="👥 Управление админами", callback_data="admin_menu")])
     if level >= 4:
         buttons.append([InlineKeyboardButton(text="📢 Рассылка", callback_data="broadcast")])
-    
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 def channel_keyboard():
@@ -231,94 +228,79 @@ def admin_list_keyboard():
         [InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_admin")]
     ])
 
-# ===== ОТСЛЕЖИВАНИЕ ПОЛЬЗОВАТЕЛЕЙ =====
-
-
-# ===== КОМАНДА START =====
+# ===== КОМАНДА /start =====
 @router.message(Command('start'))
 async def cmd_start(message: types.Message, bot: Bot):
     user_id = message.from_user.id
     admin_level = get_admin_level(user_id)
-    
     add_user(user_id, message.from_user.username, message.from_user.first_name)
-    
+
     if admin_level > 0:
-        level_names = {1: "👤 Базовый", 2: "⭐ Продвинутый", 3: "🌟 Админ", 4: "👑 Владелец"}
+        level_names = {1: "Базовый", 2: "Продвинутый", 3: "Админ", 4: "Владелец"}
         await message.answer(
-            f"👑 *Админ-панель Mellstroy Sounds*\n\n"
-            f"📊 Уровень: {level_names.get(admin_level, 'Админ')}\n"
-            f"🎵 Управление звуками Mellstroy\n\n"
+            f"👑 Админ-панель Mellstroy Sounds\n\n"
+            f"Уровень: {level_names.get(admin_level, 'Админ')}\n"
+            f"Управление звуками Mellstroy\n\n"
             f"Выбери действие:",
-            parse_mode="Markdown",
             reply_markup=admin_keyboard(admin_level)
         )
         return
-    
-    # Проверка подписки только для обычных юзеров
+
+    # Проверка подписки для обычных пользователей
     try:
         member = await bot.get_chat_member(CHANNEL_USERNAME, user_id)
         is_subscribed = member.status not in ['left', 'kicked']
     except:
         is_subscribed = False
-    
+
     if not is_subscribed:
         await message.answer(
-            f"🎵 *Mellstroy Sounds Bot*\n\n"
+            f"🎵 Mellstroy Sounds Bot\n\n"
             f"Привет! Я бот для поиска звуков Mellstroy.\n\n"
-            f"⚠️ *Для использования подпишись на канал:* {CHANNEL_USERNAME}\n\n"
+            f"⚠️ Для использования подпишись на канал: {CHANNEL_USERNAME}\n\n"
             f"После подписки нажми кнопку проверки!",
-            parse_mode="Markdown",
             reply_markup=channel_keyboard()
         )
     else:
         await message.answer(
-            "🎵 *Mellstroy Sounds Bot*\n\n"
-            "✅ Спасибо за подписку!\n\n"
-            "🎯 *Как использовать:*\n"
-            "• Напиши @MellstroyMP3_bot в любом чате\n"
-            "• Введи название звука\n"
-            "• Выбери и отправь в чат!\n\n"
-            "💡 Звуки отправляются как голосовые сообщения!",
-            parse_mode="Markdown"
-        )
-# ===== ПРОВЕРКА ПОДПИСКИ =====
-@router.callback_query(lambda c: c.data == "check_sub")
-async def check_subscription_btn(callback: types.CallbackQuery, bot: Bot):
-    user_id = callback.from_user.id
-    
-    try:
-        member = await bot.get_chat_member(CHANNEL_USERNAME, user_id)
-        is_subscribed = member.status not in ['left', 'kicked']
-    except Exception as e:
-        await callback.answer(f"❌ Ошибка проверки: {e}", show_alert=True)
-        return
-    
-    if is_subscribed:
-        # Обновляем статус в базе
-        conn = sqlite3.connect('sounds.db')
-        cursor = conn.cursor()
-        cursor.execute('UPDATE users SET subscribed = TRUE WHERE user_id = ?', (user_id,))
-        conn.commit()
-        conn.close()
-        
-        await callback.message.edit_text(
-            "🎵 *Mellstroy Sounds Bot*\n\n"
+            "🎵 Mellstroy Sounds Bot\n\n"
             "✅ Спасибо за подписку!\n\n"
             "🎯 Как использовать:\n"
             "• Напиши @MellstroyMP3_bot в любом чате\n"
             "• Введи название звука\n"
             "• Выбери и отправь в чат!\n\n"
-            "💡 Звуки отправляются как голосовые сообщения!",
-            parse_mode="Markdown"
+            "💡 Звуки отправляются как голосовые сообщения!"
+        )
+
+# ===== ПРОВЕРКА ПОДПИСКИ =====
+@router.callback_query(lambda c: c.data == "check_sub")
+async def check_subscription_btn(callback: types.CallbackQuery, bot: Bot):
+    user_id = callback.from_user.id
+    try:
+        member = await bot.get_chat_member(CHANNEL_USERNAME, user_id)
+        is_subscribed = member.status not in ['left', 'kicked']
+    except Exception as e:
+        await callback.answer(f"Ошибка: {e}", show_alert=True)
+        return
+
+    if is_subscribed:
+        await callback.message.edit_text(
+            "🎵 Mellstroy Sounds Bot\n\n"
+            "✅ Спасибо за подписку!\n\n"
+            "🎯 Как использовать:\n"
+            "• Напиши @MellstroyMP3_bot в любом чате\n"
+            "• Введи название звука\n"
+            "• Выбери и отправь в чат!\n\n"
+            "💡 Звуки отправляются как голосовые сообщения!"
         )
     else:
-        await callback.answer("❌ Ты ещё не подписался на канал!", show_alert=True)
+        await callback.answer("❌ Ты ещё не подписался! Проверь @MellstroySounds", show_alert=True)
 
 # ===== АДМИН-МЕНЮ =====
 @router.callback_query(lambda c: c.data == "back_to_admin")
 async def back_to_admin(callback: types.CallbackQuery):
-    admin_level = get_admin_level(callback.from_user.id)
-    await callback.message.edit_reply_markup(reply_markup=admin_keyboard(admin_level))
+    level = get_admin_level(callback.from_user.id)
+    await callback.message.edit_reply_markup(reply_markup=admin_keyboard(level))
     await callback.answer()
 
 @router.callback_query(lambda c: c.data == "add_sound")
@@ -326,7 +308,6 @@ async def btn_add_sound(callback: types.CallbackQuery, state: FSMContext):
     if get_admin_level(callback.from_user.id) < 1:
         await callback.answer("❌ Нет прав!", show_alert=True)
         return
-    
     await callback.message.answer("✏️ Напиши название звука:")
     await state.set_state(AddSound.waiting_for_name)
     await callback.answer()
@@ -337,50 +318,43 @@ async def btn_list_sounds(callback: types.CallbackQuery):
     if not sounds:
         await callback.message.answer("❌ Нет звуков в базе")
     else:
-        text = "📋 *Все звуки:*\n\n"
+        text = "📋 Все звуки:\n\n"
         for sound_id, name, _ in sounds[:50]:
             text += f"• {name} (ID: {sound_id})\n"
-        
         if len(sounds) > 50:
             text += f"\n... и ещё {len(sounds) - 50} звуков"
-        
-        await callback.message.answer(text, parse_mode="Markdown")
+        await callback.message.answer(text)
     await callback.answer()
 
 @router.callback_query(lambda c: c.data == "stats")
 async def btn_stats(callback: types.CallbackQuery):
     sounds_count, users_count, admins_count = get_stats()
-    
     stats_text = f"""
-📊 *Статистика бота:*
+📊 Статистика бота:
 
 👥 Пользователей: {users_count}
 🎵 Звуков: {sounds_count}
 👑 Админов: {admins_count}
 📅 Дата: {datetime.now().strftime('%d.%m.%Y')}
 """
-    await callback.message.answer(stats_text, parse_mode="Markdown")
+    await callback.message.answer(stats_text)
     await callback.answer()
 
-# ===== УДАЛЕНИЕ ЗВУКОВ =====
 @router.callback_query(lambda c: c.data == "delete_menu")
 async def btn_delete_menu(callback: types.CallbackQuery):
     if get_admin_level(callback.from_user.id) < 2:
-        await callback.answer("❌ Нужен 2 уровень доступа!", show_alert=True)
+        await callback.answer("❌ Нужен 2 уровень!", show_alert=True)
         return
-    
     sounds = get_all_sounds()
     if not sounds:
         await callback.message.answer("❌ Нет звуков для удаления")
         await callback.answer()
         return
-    
-    text = "🗑 *Выбери ID для удаления:*\n\n"
+    text = "🗑 Выбери ID для удаления:\n\n"
     for sound_id, name, _ in sounds[:30]:
         text += f"• ID: {sound_id} | {name}\n"
-    text += "\n*Используй команду:* `/delete ID`"
-    
-    await callback.message.answer(text, parse_mode="Markdown")
+    text += "\nИспользуй команду: /delete ID"
+    await callback.message.answer(text)
     await callback.answer()
 
 @router.message(Command('delete'))
@@ -388,22 +362,20 @@ async def cmd_delete(message: types.Message):
     if get_admin_level(message.from_user.id) < 2:
         await message.answer("❌ Нет прав!")
         return
-    
     try:
         sound_id = int(message.text.split()[1])
         delete_sound(sound_id)
-        await message.answer(f"✅ Звук с ID {sound_id} удален!")
+        await message.answer(f"✅ Звук с ID {sound_id} удалён!")
     except:
-        await message.answer("❌ /delete ID")
+        await message.answer("❌ Используй: /delete ID")
 
 # ===== УПРАВЛЕНИЕ АДМИНАМИ =====
 @router.callback_query(lambda c: c.data == "admin_menu")
 async def btn_admin_menu(callback: types.CallbackQuery):
     if get_admin_level(callback.from_user.id) < 3:
-        await callback.answer("❌ Нужен 3 уровень доступа!", show_alert=True)
+        await callback.answer("❌ Нужен 3 уровень!", show_alert=True)
         return
-    
-    await callback.message.answer("👥 *Управление админами*", parse_mode="Markdown", reply_markup=admin_list_keyboard())
+    await callback.message.answer("👥 Управление админами", reply_markup=admin_list_keyboard())
     await callback.answer()
 
 @router.callback_query(lambda c: c.data == "add_admin")
@@ -415,24 +387,22 @@ async def btn_add_admin(callback: types.CallbackQuery, state: FSMContext):
 @router.callback_query(lambda c: c.data == "remove_admin")
 async def btn_remove_admin(callback: types.CallbackQuery):
     admins = get_all_admins()
-    text = "🗑 *Удалить админа:*\n\n"
+    text = "🗑 Удалить админа:\n\n"
     for user_id, username, level in admins:
         if user_id != OWNER_ID:
             text += f"• {username or 'ID:'+str(user_id)} (Уровень {level})\n"
-    text += "\n*Команда:* `/removeadmin ID`"
-    
-    await callback.message.answer(text, parse_mode="Markdown")
+    text += "\nКоманда: /removeadmin ID"
+    await callback.message.answer(text)
     await callback.answer()
 
 @router.callback_query(lambda c: c.data == "list_admins")
 async def btn_list_admins(callback: types.CallbackQuery):
     admins = get_all_admins()
-    text = "👥 *Список админов:*\n\n"
+    text = "👥 Список админов:\n\n"
     for user_id, username, level in admins:
         crown = "👑" if user_id == OWNER_ID else "⭐" if level >= 3 else "👤"
         text += f"{crown} {username or 'Без username'} - Уровень {level}\n"
-    
-    await callback.message.answer(text, parse_mode="Markdown")
+    await callback.message.answer(text)
     await callback.answer()
 
 @router.message(Command('removeadmin'))
@@ -440,11 +410,10 @@ async def cmd_remove_admin(message: types.Message):
     if message.from_user.id != OWNER_ID:
         await message.answer("❌ Только владелец может удалять админов!")
         return
-    
     try:
         user_id = int(message.text.split()[1])
         remove_admin(user_id)
-        await message.answer(f"✅ Админ {user_id} удален!")
+        await message.answer(f"✅ Админ {user_id} удалён!")
     except:
         await message.answer("❌ /removeadmin ID")
 
@@ -454,13 +423,11 @@ async def btn_broadcast(callback: types.CallbackQuery, state: FSMContext):
     if get_admin_level(callback.from_user.id) < 4:
         await callback.answer("❌ Только владелец!", show_alert=True)
         return
-    
     await callback.message.answer(
-        "📢 *Рассылка сообщений*\n\n"
+        "📢 Рассылка сообщений\n\n"
         "Отправь сообщение (текст, фото, видео, голосовое)\n"
-        "и я разошлю его ВСЕМ пользователям бота!\n\n"
-        "Для отмены: /cancel",
-        parse_mode="Markdown"
+        "и я разошлю его всем пользователям бота!\n\n"
+        "Для отмены: /cancel"
     )
     await state.set_state(Broadcast.waiting_for_post)
     await callback.answer()
@@ -475,9 +442,7 @@ async def broadcast_post(message: types.Message, state: FSMContext, bot: Bot):
     users = get_all_users()
     success = 0
     failed = 0
-    
     await message.answer(f"📤 Начинаю рассылку на {len(users)} пользователей...")
-    
     for user_id in users:
         try:
             if message.text:
@@ -497,64 +462,51 @@ async def broadcast_post(message: types.Message, state: FSMContext, bot: Bot):
             success += 1
         except:
             failed += 1
-        
         await asyncio.sleep(0.05)
-    
     await message.answer(
-        f"✅ *Рассылка завершена!*\n\n"
+        f"✅ Рассылка завершена!\n\n"
         f"📊 Успешно: {success}\n"
-        f"❌ Не доставлено: {failed}",
-        parse_mode="Markdown"
+        f"❌ Не доставлено: {failed}"
     )
     await state.clear()
 
-# ===== ДОБАВЛЕНИЕ ЗВУКА =====
+# ===== ДОБАВЛЕНИЕ ЗВУКА (КОНВЕРТАЦИЯ MP3 В ГОЛОСОВОЕ) =====
 @router.message(AddSound.waiting_for_name)
 async def get_name(message: types.Message, state: FSMContext):
     await state.update_data(name=message.text.strip())
-    await message.answer("📁 Отправь звук (MP3, аудио, голосовое)")
+    await message.answer("📁 Отправь звук (MP3, аудиофайл или голосовое)")
     await state.set_state(AddSound.waiting_for_file)
-    
+
 @router.message(AddSound.waiting_for_file)
 async def get_file(message: types.Message, state: FSMContext, bot: Bot):
-    # Проверяем что мы в состоянии добавления звука
-    current_state = await state.get_state()
-    if current_state != AddSound.waiting_for_file:
-        return
-    
     file_id = None
-    
     if message.voice:
         file_id = message.voice.file_id
     elif message.audio:
-        # Конвертируем аудио в голосовое
-        sent_msg = await message.answer_voice(
-            voice=message.audio.file_id,
-            caption="⏳ Конвертация..."
-        )
-        file_id = sent_msg.voice.file_id
-        await sent_msg.delete()
+        # Конвертация аудио в голосовое
+        sent = await message.answer_voice(voice=message.audio.file_id)
+        file_id = sent.voice.file_id
+        await sent.delete()
     elif message.document:
         if message.document.mime_type and 'audio' in message.document.mime_type:
-            sent_msg = await message.answer_voice(
-                voice=message.document.file_id,
-                caption="⏳ Конвертация..."
-            )
-            file_id = sent_msg.voice.file_id
-            await sent_msg.delete()
+            sent = await message.answer_voice(voice=message.document.file_id)
+            file_id = sent.voice.file_id
+            await sent.delete()
         else:
             await message.answer("❌ Отправь аудиофайл (MP3) или голосовое!")
             return
-    
-    if not file_id:
+    else:
         await message.answer("❌ Отправь аудиофайл (MP3) или голосовое!")
         return
-    
+
+    if not file_id:
+        await message.answer("❌ Не удалось конвертировать в голосовое.")
+        return
+
     data = await state.get_data()
     name = data['name']
-    
     add_sound(name, file_id, message.from_user.id)
-    await message.answer(f"✅ Звук '{name}' добавлен как голосовое!\nПроверь: @MellstroyMP3_bot {name}")
+    await message.answer(f"✅ Звук «{name}» добавлен как голосовое!\nПроверь: @MellstroyMP3_bot {name}")
     await state.clear()
 
 # ===== ДОБАВЛЕНИЕ АДМИНА =====
@@ -565,9 +517,9 @@ async def get_admin_id(message: types.Message, state: FSMContext):
         await state.update_data(user_id=user_id)
         await message.answer(
             "📊 Выбери уровень доступа:\n\n"
-            "1 - Базовый (добавление звуков)\n"
-            "2 - Продвинутый (удаление звуков)\n"
-            "3 - Админ (управление админами)"
+            "1 — Базовый (добавление звуков)\n"
+            "2 — Продвинутый (удаление звуков)\n"
+            "3 — Админ (управление админами)"
         )
         await state.set_state(AddAdmin.waiting_for_level)
     except:
@@ -580,14 +532,11 @@ async def get_admin_level_state(message: types.Message, state: FSMContext):
         if level not in [1, 2, 3]:
             await message.answer("❌ Уровень должен быть 1, 2 или 3!")
             return
-        
         if message.from_user.id != OWNER_ID and level >= get_admin_level(message.from_user.id):
             await message.answer("❌ Нельзя назначить уровень выше своего!")
             return
-        
         data = await state.get_data()
         user_id = data['user_id']
-        
         add_admin(user_id, None, level, message.from_user.id)
         await message.answer(f"✅ Админ {user_id} добавлен с уровнем {level}!")
         await state.clear()
@@ -595,31 +544,29 @@ async def get_admin_level_state(message: types.Message, state: FSMContext):
         await message.answer("❌ Отправь число 1, 2 или 3!")
 
 # ===== ИНЛАЙН-ПОИСК =====
-# ===== ИНЛАЙН-ПОИСК =====
 @router.inline_query()
 async def inline_search(inline_query: types.InlineQuery, bot: Bot):
     user_id = inline_query.from_user.id
-    
-    # Админов и владельца не проверяем на подписку
+
+    # Админы пропускаются без проверки подписки
     if get_admin_level(user_id) == 0:
         try:
             member = await bot.get_chat_member(CHANNEL_USERNAME, user_id)
             is_subscribed = member.status not in ['left', 'kicked']
         except:
             is_subscribed = False
-        
         if not is_subscribed:
             await inline_query.answer(
                 [],
-                switch_pm_text="❌ Подпишись на @Mellstroysounds!",
+                switch_pm_text="❌ Подпишись на @MellstroySounds!",
                 switch_pm_parameter="check_sub",
                 cache_time=1
             )
             return
-    
+
     query = inline_query.query.strip()
     sounds = search_sounds(query) if query else get_all_sounds()
-    
+
     results = []
     for sound_id, name, file_id in sounds[:50]:
         results.append(
@@ -629,8 +576,8 @@ async def inline_search(inline_query: types.InlineQuery, bot: Bot):
                 title=name
             )
         )
-    
     await inline_query.answer(results, cache_time=1)
+
 @router.chosen_inline_result()
 async def on_sound_chosen(chosen_result: types.ChosenInlineResult):
     increment_usage(int(chosen_result.result_id))
@@ -639,15 +586,15 @@ async def on_sound_chosen(chosen_result: types.ChosenInlineResult):
 async def main():
     print("🚀 Запуск Mellstroy Sounds Bot...")
     init_db()
-    
+
     sounds = get_all_sounds()
     users = get_users_count()
     print(f"📊 Звуков: {len(sounds)} | Пользователей: {users}")
-    
+
     bot = Bot(token=TOKEN)
     dp = Dispatcher(storage=MemoryStorage())
     dp.include_router(router)
-    
+
     print("✅ Бот запущен!")
     await dp.start_polling(bot)
 
