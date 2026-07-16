@@ -18,7 +18,7 @@ logging.basicConfig(level=logging.INFO)
 TOKEN = "8838743887:AAGwl6r4X_ZlTgRcD4a0ezlky9Mawc_cGXE"
 OWNER_ID = 5209929082  # твой Telegram ID
 CHANNEL_USERNAME = "@MellstroySounds"
-TEMP_CHANNEL_ID = -2281401761  # подставь свой ID
+TEMP_CHANNEL_ID = 2281401761  # подставь свой ID
 CHANNEL_URL = "https://t.me/MellstroySounds"
 
 # Путь к базе данных (для Railway Volume используй /app/data/sounds.db)
