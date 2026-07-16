@@ -238,49 +238,49 @@ def admin_list_keyboard():
 @router.message(Command('start'))
 async def cmd_start(message: types.Message, bot: Bot):
     user_id = message.from_user.id
+    admin_level = get_admin_level(user_id)
+    
     add_user(user_id, message.from_user.username, message.from_user.first_name)
     
+    if admin_level > 0:
+        level_names = {1: "👤 Базовый", 2: "⭐ Продвинутый", 3: "🌟 Админ", 4: "👑 Владелец"}
+        await message.answer(
+            f"👑 *Админ-панель Mellstroy Sounds*\n\n"
+            f"📊 Уровень: {level_names.get(admin_level, 'Админ')}\n"
+            f"🎵 Управление звуками Mellstroy\n\n"
+            f"Выбери действие:",
+            parse_mode="Markdown",
+            reply_markup=admin_keyboard(admin_level)
+        )
+        return
+    
+    # Проверка подписки только для обычных юзеров
     try:
         member = await bot.get_chat_member(CHANNEL_USERNAME, user_id)
         is_subscribed = member.status not in ['left', 'kicked']
     except:
         is_subscribed = False
     
-    admin_level = get_admin_level(user_id)
-    
-    if admin_level > 0:
-        level_names = {1: "👤 Базовый", 2: "⭐ Продвинутый", 3: "🌟 Админ", 4: "👑 Владелец"}
-        welcome_text = f"""
-👑 *Админ-панель Mellstroy Sounds*
-
-📊 Уровень: {level_names.get(admin_level, 'Админ')}
-🎵 Управление звуками Mellstroy
-
-Выбери действие:
-"""
-        await message.answer(welcome_text, parse_mode="Markdown", reply_markup=admin_keyboard(admin_level))
+    if not is_subscribed:
+        await message.answer(
+            f"🎵 *Mellstroy Sounds Bot*\n\n"
+            f"Привет! Я бот для поиска звуков Mellstroy.\n\n"
+            f"⚠️ *Для использования подпишись на канал:* {CHANNEL_USERNAME}\n\n"
+            f"После подписки нажми кнопку проверки!",
+            parse_mode="Markdown",
+            reply_markup=channel_keyboard()
+        )
     else:
-        if not is_subscribed:
-            await message.answer(
-                f"🎵 *Mellstroy Sounds Bot*\n\n"
-                f"Привет! Я бот для поиска звуков Mellstroy.\n\n"
-                f"⚠️ *Для использования подпишись на канал:* {CHANNEL_USERNAME}\n\n"
-                f"После подписки нажми кнопку проверки!",
-                parse_mode="Markdown",
-                reply_markup=channel_keyboard()
-            )
-        else:
-            await message.answer(
-                "🎵 *Mellstroy Sounds Bot*\n\n"
-                "✅ Спасибо за подписку!\n\n"
-                "🎯 *Как использовать:*\n"
-                "• Напиши @MellstroyMP3_bot в любом чате\n"
-                "• Введи название звука\n"
-                "• Выбери и отправь в чат!\n\n"
-                "💡 Звуки отправляются как голосовые сообщения!",
-                parse_mode="Markdown"
-            )
-
+        await message.answer(
+            "🎵 *Mellstroy Sounds Bot*\n\n"
+            "✅ Спасибо за подписку!\n\n"
+            "🎯 *Как использовать:*\n"
+            "• Напиши @MellstroyMP3_bot в любом чате\n"
+            "• Введи название звука\n"
+            "• Выбери и отправь в чат!\n\n"
+            "💡 Звуки отправляются как голосовые сообщения!",
+            parse_mode="Markdown"
+        )
 # ===== ПРОВЕРКА ПОДПИСКИ =====
 @router.callback_query(lambda c: c.data == "check_sub")
 async def check_subscription_btn(callback: types.CallbackQuery, bot: Bot):
@@ -571,24 +571,27 @@ async def get_admin_level_state(message: types.Message, state: FSMContext):
         await message.answer("❌ Отправь число 1, 2 или 3!")
 
 # ===== ИНЛАЙН-ПОИСК =====
+# ===== ИНЛАЙН-ПОИСК =====
 @router.inline_query()
 async def inline_search(inline_query: types.InlineQuery, bot: Bot):
     user_id = inline_query.from_user.id
     
-    try:
-        member = await bot.get_chat_member(CHANNEL_USERNAME, user_id)
-        is_subscribed = member.status not in ['left', 'kicked']
-    except:
-        is_subscribed = False
-    
-    if not is_subscribed:
-        await inline_query.answer(
-            [],
-            switch_pm_text="❌ Подпишись на @Mellstroysounds!",
-            switch_pm_parameter="check_sub",
-            cache_time=1
-        )
-        return
+    # Админов и владельца не проверяем на подписку
+    if get_admin_level(user_id) == 0:
+        try:
+            member = await bot.get_chat_member(CHANNEL_USERNAME, user_id)
+            is_subscribed = member.status not in ['left', 'kicked']
+        except:
+            is_subscribed = False
+        
+        if not is_subscribed:
+            await inline_query.answer(
+                [],
+                switch_pm_text="❌ Подпишись на @Mellstroysounds!",
+                switch_pm_parameter="check_sub",
+                cache_time=1
+            )
+            return
     
     query = inline_query.query.strip()
     sounds = search_sounds(query) if query else get_all_sounds()
@@ -604,7 +607,6 @@ async def inline_search(inline_query: types.InlineQuery, bot: Bot):
         )
     
     await inline_query.answer(results, cache_time=1)
-
 @router.chosen_inline_result()
 async def on_sound_chosen(chosen_result: types.ChosenInlineResult):
     increment_usage(int(chosen_result.result_id))
