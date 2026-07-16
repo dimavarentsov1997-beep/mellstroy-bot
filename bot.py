@@ -21,7 +21,7 @@ CHANNEL_USERNAME = "@MellstroySounds"
 CHANNEL_URL = "https://t.me/MellstroySounds"
 DB_PATH = "sounds.db"
 
-# ===== БАЗА ДАННЫХ ====
+# ===== БАЗА ДАННЫХ =====
 def init_db():
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
@@ -61,6 +61,9 @@ def init_db():
             last_activity TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     ''')
+    
+    # Удаляем все звуки с пустым названием
+    cursor.execute("DELETE FROM sounds WHERE name IS NULL OR name = ''")
     
     cursor.execute('INSERT OR IGNORE INTO admins (user_id, username, level) VALUES (?, ?, ?)',
                    (OWNER_ID, 'OWNER', 4))
@@ -528,26 +531,15 @@ async def get_admin_level_state(message: types.Message, state: FSMContext):
     except:
         await message.answer("❌ Отправь число 1, 2 или 3!")
 
-# ===== ИНЛАЙН-ПОИСК (АУДИО) =====
+# ===== ИНЛАЙН-ПОИСК (АУДИО, БЕЗ ПРОВЕРКИ ПОДПИСКИ) =====
 @router.inline_query()
 async def inline_search(inline_query: types.InlineQuery, bot: Bot):
     user_id = inline_query.from_user.id
     add_user(user_id, inline_query.from_user.username, inline_query.from_user.first_name)
 
-    if get_admin_level(user_id) == 0:
-        try:
-            member = await bot.get_chat_member(CHANNEL_USERNAME, user_id)
-            is_subscribed = member.status not in ['left', 'kicked']
-        except:
-            is_subscribed = False
-        if not is_subscribed:
-            await inline_query.answer(
-                [],
-                switch_pm_text="❌ Подпишись на @MellstroySounds!",
-                switch_pm_parameter="check_sub",
-                cache_time=1
-            )
-            return
+    # Проверка подписки временно отключена для стабильности
+    # if get_admin_level(user_id) == 0:
+    #     ... (закомментировано)
 
     query = inline_query.query.strip()
     sounds = search_sounds(query) if query else get_all_sounds()
