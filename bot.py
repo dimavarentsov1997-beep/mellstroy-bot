@@ -304,7 +304,7 @@ async def check_subscription_btn(callback: types.CallbackQuery, bot: Bot):
         await callback.message.edit_text(
             "🎵 *Mellstroy Sounds Bot*\n\n"
             "✅ Спасибо за подписку!\n\n"
-            "🎯 *Как использовать:*\n"
+            "🎯 Как использовать:\n"
             "• Напиши @MellstroyMP3_bot в любом чате\n"
             "• Введи название звука\n"
             "• Выбери и отправь в чат!\n\n"
