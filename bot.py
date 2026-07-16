@@ -483,14 +483,14 @@ async def get_file(message: types.Message, state: FSMContext, bot: Bot):
     if message.voice:
         file_id = message.voice.file_id
     elif message.audio:
-        # Отправляем как голосовое прямо в чат, получаем file_id и удаляем
-        sent = await message.answer_voice(voice=message.audio.file_id)
+        # Отправляем аудио как голосовое в тот же чат через bot.send_voice
+        sent = await bot.send_voice(chat_id=message.chat.id, voice=message.audio.file_id)
         file_id = sent.voice.file_id
-        await sent.delete()
+        await bot.delete_message(chat_id=message.chat.id, message_id=sent.message_id)
     elif message.document and message.document.mime_type and 'audio' in message.document.mime_type:
-        sent = await message.answer_voice(voice=message.document.file_id)
+        sent = await bot.send_voice(chat_id=message.chat.id, voice=message.document.file_id)
         file_id = sent.voice.file_id
-        await sent.delete()
+        await bot.delete_message(chat_id=message.chat.id, message_id=sent.message_id)
     else:
         await message.answer("❌ Отправь аудиофайл (MP3) или голосовое!")
         return
