@@ -289,10 +289,18 @@ async def check_subscription_btn(callback: types.CallbackQuery, bot: Bot):
     try:
         member = await bot.get_chat_member(CHANNEL_USERNAME, user_id)
         is_subscribed = member.status not in ['left', 'kicked']
-    except:
-        is_subscribed = False
+    except Exception as e:
+        await callback.answer(f"❌ Ошибка проверки: {e}", show_alert=True)
+        return
     
     if is_subscribed:
+        # Обновляем статус в базе
+        conn = sqlite3.connect('sounds.db')
+        cursor = conn.cursor()
+        cursor.execute('UPDATE users SET subscribed = TRUE WHERE user_id = ?', (user_id,))
+        conn.commit()
+        conn.close()
+        
         await callback.message.edit_text(
             "🎵 *Mellstroy Sounds Bot*\n\n"
             "✅ Спасибо за подписку!\n\n"
@@ -305,8 +313,6 @@ async def check_subscription_btn(callback: types.CallbackQuery, bot: Bot):
         )
     else:
         await callback.answer("❌ Ты ещё не подписался на канал!", show_alert=True)
-    
-    await callback.answer()
 
 # ===== АДМИН-МЕНЮ =====
 @router.callback_query(lambda c: c.data == "back_to_admin")
@@ -511,32 +517,37 @@ async def get_name(message: types.Message, state: FSMContext):
     
 @router.message(AddSound.waiting_for_file)
 async def get_file(message: types.Message, state: FSMContext, bot: Bot):
+    # Проверяем что мы в состоянии добавления звука
+    current_state = await state.get_state()
+    if current_state != AddSound.waiting_for_file:
+        return
+    
     file_id = None
     
     if message.voice:
         file_id = message.voice.file_id
     elif message.audio:
-        await message.answer("⏳ Конвертирую в голосовое...")
-        sent_msg = await bot.send_voice(
-            chat_id=message.chat.id,
-            voice=message.audio.file_id
+        # Конвертируем аудио в голосовое
+        sent_msg = await message.answer_voice(
+            voice=message.audio.file_id,
+            caption="⏳ Конвертация..."
         )
         file_id = sent_msg.voice.file_id
         await sent_msg.delete()
     elif message.document:
         if message.document.mime_type and 'audio' in message.document.mime_type:
-            await message.answer("⏳ Конвертирую в голосовое...")
-            sent_msg = await bot.send_voice(
-                chat_id=message.chat.id,
-                voice=message.document.file_id
+            sent_msg = await message.answer_voice(
+                voice=message.document.file_id,
+                caption="⏳ Конвертация..."
             )
             file_id = sent_msg.voice.file_id
             await sent_msg.delete()
         else:
-            file_id = message.document.file_id
+            await message.answer("❌ Отправь аудиофайл (MP3) или голосовое!")
+            return
     
     if not file_id:
-        await message.answer("❌ Отправь MP3/аудио или голосовое!")
+        await message.answer("❌ Отправь аудиофайл (MP3) или голосовое!")
         return
     
     data = await state.get_data()
