@@ -21,7 +21,7 @@ CHANNEL_USERNAME = "@MellstroySounds"
 CHANNEL_URL = "https://t.me/MellstroySounds"
 DB_PATH = "sounds.db"
 
-# ===== БАЗА ДАННЫХ =====
+# ===== БАЗА ДАННЫХ ====
 def init_db():
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
