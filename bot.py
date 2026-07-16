@@ -232,11 +232,7 @@ def admin_list_keyboard():
     ])
 
 # ===== ОТСЛЕЖИВАНИЕ ПОЛЬЗОВАТЕЛЕЙ =====
-@router.message()
-async def track_user(message: types.Message, bot: Bot):
-    if message.text and message.text.startswith('/'):
-        return
-    add_user(message.from_user.id, message.from_user.username, message.from_user.first_name)
+
 
 # ===== КОМАНДА START =====
 @router.message(Command('start'))
