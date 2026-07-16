@@ -16,7 +16,7 @@ logging.basicConfig(level=logging.INFO)
 
 # ===== НАСТРОЙКИ =====
 TOKEN = "8838743887:AAGwl6r4X_ZlTgRcD4a0ezlky9Mawc_cGXE"
-OWNER_ID = 5209929082  # твой Telegram ID
+OWNER_ID = 5209929082
 CHANNEL_USERNAME = "@MellstroySounds"
 CHANNEL_URL = "https://t.me/MellstroySounds"
 DB_PATH = "sounds.db"
@@ -261,13 +261,15 @@ async def cmd_start(message: types.Message, bot: Bot):
             "• Напиши @MellstroyMP3_bot в любом чате\n"
             "• Введи название звука\n"
             "• Выбери и отправь в чат!\n\n"
-            "💡 Звуки отправляются как голосовые сообщения!"
+            "💡 Звуки отправляются как аудиофайлы."
         )
 
 # ===== ПРОВЕРКА ПОДПИСКИ =====
 @router.callback_query(lambda c: c.data == "check_sub")
 async def check_subscription_btn(callback: types.CallbackQuery, bot: Bot):
     user_id = callback.from_user.id
+    add_user(user_id, callback.from_user.username, callback.from_user.first_name)
+
     try:
         member = await bot.get_chat_member(CHANNEL_USERNAME, user_id)
         is_subscribed = member.status not in ['left', 'kicked']
@@ -283,7 +285,7 @@ async def check_subscription_btn(callback: types.CallbackQuery, bot: Bot):
             "• Напиши @MellstroyMP3_bot в любом чате\n"
             "• Введи название звука\n"
             "• Выбери и отправь в чат!\n\n"
-            "💡 Звуки отправляются как голосовые сообщения!"
+            "💡 Звуки отправляются как аудиофайлы."
         )
     else:
         await callback.answer("❌ Ты ещё не подписался! Проверь @MellstroySounds", show_alert=True)
@@ -530,6 +532,7 @@ async def get_admin_level_state(message: types.Message, state: FSMContext):
 @router.inline_query()
 async def inline_search(inline_query: types.InlineQuery, bot: Bot):
     user_id = inline_query.from_user.id
+    add_user(user_id, inline_query.from_user.username, inline_query.from_user.first_name)
 
     if get_admin_level(user_id) == 0:
         try:
@@ -551,6 +554,8 @@ async def inline_search(inline_query: types.InlineQuery, bot: Bot):
 
     results = []
     for sound_id, name, file_id in sounds[:50]:
+        if not name:
+            name = "Без названия"
         results.append(
             InlineQueryResultCachedAudio(
                 id=str(sound_id),
