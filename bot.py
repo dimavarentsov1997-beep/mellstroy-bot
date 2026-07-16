@@ -62,7 +62,7 @@ def init_db():
         )
     ''')
     
-    # Удаляем ВСЕ записи с пустым именем
+    # ===== ГЛАВНАЯ ЗАЩИТА: удаляем все звуки с пустым именем при запуске =====
     cursor.execute("DELETE FROM sounds WHERE name IS NULL OR name = ''")
     
     cursor.execute('INSERT OR IGNORE INTO admins (user_id, username, level) VALUES (?, ?, ?)',
@@ -70,7 +70,7 @@ def init_db():
     
     conn.commit()
     conn.close()
-    print("✅ База данных готова")
+    print("✅ База данных готова (пустые имена удалены)")
 
 def add_sound(name, file_id, added_by):
     conn = sqlite3.connect(DB_PATH)
@@ -83,7 +83,7 @@ def add_sound(name, file_id, added_by):
 def search_sounds(query):
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
-    # Исключаем пустые имена прямо в SQL
+    # ===== ДОПОЛНИТЕЛЬНАЯ ЗАЩИТА: не выбираем записи с пустым именем =====
     cursor.execute(
         "SELECT id, name, file_id FROM sounds WHERE name IS NOT NULL AND name != '' AND LOWER(name) LIKE LOWER(?) ORDER BY usage_count DESC LIMIT 50",
         (f'%{query}%',)
@@ -95,7 +95,7 @@ def search_sounds(query):
 def get_all_sounds():
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
-    # Исключаем пустые имена
+    # ===== ДОПОЛНИТЕЛЬНАЯ ЗАЩИТА: не выбираем записи с пустым именем =====
     cursor.execute("SELECT id, name, file_id FROM sounds WHERE name IS NOT NULL AND name != '' ORDER BY usage_count DESC")
     results = cursor.fetchall()
     conn.close()
