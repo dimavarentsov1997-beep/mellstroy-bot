@@ -36,6 +36,20 @@ def init_db():
         )
     ''')
     
+    # Добавляем колонки если их нет (для старых баз)
+    try:
+        cursor.execute('ALTER TABLE sounds ADD COLUMN added_by INTEGER')
+    except:
+        pass
+    try:
+        cursor.execute('ALTER TABLE sounds ADD COLUMN usage_count INTEGER DEFAULT 0')
+    except:
+        pass
+    try:
+        cursor.execute('ALTER TABLE sounds ADD COLUMN created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP')
+    except:
+        pass
+    
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS admins (
             user_id INTEGER PRIMARY KEY,
@@ -62,7 +76,7 @@ def init_db():
     conn.commit()
     conn.close()
     print("✅ База готова")
-
+    
 def add_sound(name, file_id, added_by):
     conn = sqlite3.connect('sounds.db')
     cursor = conn.cursor()
