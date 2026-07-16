@@ -18,6 +18,7 @@ logging.basicConfig(level=logging.INFO)
 TOKEN = "8838743887:AAGwl6r4X_ZlTgRcD4a0ezlky9Mawc_cGXE"
 OWNER_ID = 5209929082  # твой Telegram ID
 CHANNEL_USERNAME = "@MellstroySounds"
+TEMP_CHANNEL_ID = -2281401761  # подставь свой ID
 CHANNEL_URL = "https://t.me/MellstroySounds"
 
 # Путь к базе данных (для Railway Volume используй /app/data/sounds.db)
@@ -483,15 +484,22 @@ async def get_file(message: types.Message, state: FSMContext, bot: Bot):
     if message.voice:
         file_id = message.voice.file_id
     elif message.audio:
-        # Конвертация аудио в голосовое
-        sent = await message.answer_voice(voice=message.audio.file_id)
-        file_id = sent.voice.file_id
-        await sent.delete()
+        # Отправляем аудио как голосовое в технический канал
+        temp_msg = await bot.send_voice(
+            chat_id=TEMP_CHANNEL_ID,
+            voice=message.audio.file_id
+        )
+        file_id = temp_msg.voice.file_id
+        # Удаляем временное сообщение из канала
+        await bot.delete_message(chat_id=TEMP_CHANNEL_ID, message_id=temp_msg.message_id)
     elif message.document:
         if message.document.mime_type and 'audio' in message.document.mime_type:
-            sent = await message.answer_voice(voice=message.document.file_id)
-            file_id = sent.voice.file_id
-            await sent.delete()
+            temp_msg = await bot.send_voice(
+                chat_id=TEMP_CHANNEL_ID,
+                voice=message.document.file_id
+            )
+            file_id = temp_msg.voice.file_id
+            await bot.delete_message(chat_id=TEMP_CHANNEL_ID, message_id=temp_msg.message_id)
         else:
             await message.answer("❌ Отправь аудиофайл (MP3) или голосовое!")
             return
@@ -500,7 +508,7 @@ async def get_file(message: types.Message, state: FSMContext, bot: Bot):
         return
 
     if not file_id:
-        await message.answer("❌ Не удалось конвертировать в голосовое.")
+        await message.answer("❌ Не удалось обработать файл.")
         return
 
     data = await state.get_data()
@@ -508,7 +516,7 @@ async def get_file(message: types.Message, state: FSMContext, bot: Bot):
     add_sound(name, file_id, message.from_user.id)
     await message.answer(f"✅ Звук «{name}» добавлен как голосовое!\nПроверь: @MellstroyMP3_bot {name}")
     await state.clear()
-
+    
 # ===== ДОБАВЛЕНИЕ АДМИНА =====
 @router.message(AddAdmin.waiting_for_user_id)
 async def get_admin_id(message: types.Message, state: FSMContext):
