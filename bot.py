@@ -5,7 +5,7 @@ from datetime import datetime
 from aiogram import Bot, Dispatcher, types, Router, F
 from aiogram.filters import Command
 from aiogram.types import (
-    InlineQueryResultCachedVoice, InlineKeyboardMarkup, 
+    InlineQueryResultCachedAudio, InlineKeyboardMarkup, 
     InlineKeyboardButton
 )
 from aiogram.fsm.context import FSMContext
@@ -14,21 +14,18 @@ from aiogram.fsm.storage.memory import MemoryStorage
 
 logging.basicConfig(level=logging.INFO)
 
-# ===== НАСТРОЙКИ (ЗАМЕНИ НА СВОИ) =====
+# ===== НАСТРОЙКИ =====
 TOKEN = "8838743887:AAGwl6r4X_ZlTgRcD4a0ezlky9Mawc_cGXE"
 OWNER_ID = 5209929082  # твой Telegram ID
 CHANNEL_USERNAME = "@MellstroySounds"
 CHANNEL_URL = "https://t.me/MellstroySounds"
-
-# Путь к базе данных (для Railway Volume используй /app/data/sounds.db)
-DB_PATH = "sounds.db"  # если не используешь Volume, оставь так
+DB_PATH = "sounds.db"
 
 # ===== БАЗА ДАННЫХ =====
 def init_db():
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     
-    # Таблица звуков
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS sounds (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -39,14 +36,12 @@ def init_db():
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     ''')
-    # Добавление колонок, если их нет (для старых баз)
     for col in ['added_by', 'usage_count', 'created_at']:
         try:
             cursor.execute(f'ALTER TABLE sounds ADD COLUMN {col} INTEGER DEFAULT 0')
         except:
             pass
     
-    # Таблица админов
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS admins (
             user_id INTEGER PRIMARY KEY,
@@ -57,7 +52,6 @@ def init_db():
         )
     ''')
     
-    # Таблица пользователей
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS users (
             user_id INTEGER PRIMARY KEY,
@@ -68,7 +62,6 @@ def init_db():
         )
     ''')
     
-    # Владелец как админ 4 уровня
     cursor.execute('INSERT OR IGNORE INTO admins (user_id, username, level) VALUES (?, ?, ?)',
                    (OWNER_ID, 'OWNER', 4))
     
@@ -246,7 +239,6 @@ async def cmd_start(message: types.Message, bot: Bot):
         )
         return
 
-    # Проверка подписки для обычных пользователей
     try:
         member = await bot.get_chat_member(CHANNEL_USERNAME, user_id)
         is_subscribed = member.status not in ['left', 'kicked']
@@ -280,7 +272,7 @@ async def check_subscription_btn(callback: types.CallbackQuery, bot: Bot):
         member = await bot.get_chat_member(CHANNEL_USERNAME, user_id)
         is_subscribed = member.status not in ['left', 'kicked']
     except Exception as e:
-        await callback.answer(f"Ошибка: {e}", show_alert=True)
+        await callback.answer(f"Ошибка проверки: {e}", show_alert=True)
         return
 
     if is_subscribed:
@@ -470,62 +462,36 @@ async def broadcast_post(message: types.Message, state: FSMContext, bot: Bot):
     )
     await state.clear()
 
-# ===== ДОБАВЛЕНИЕ ЗВУКА (КОНВЕРТАЦИЯ MP3 В ГОЛОСОВОЕ) =====
+# ===== ДОБАВЛЕНИЕ ЗВУКА (БЕЗ КОНВЕРТАЦИИ) =====
 @router.message(AddSound.waiting_for_name)
 async def get_name(message: types.Message, state: FSMContext):
     await state.update_data(name=message.text.strip())
     await message.answer("📁 Отправь звук (MP3, аудиофайл или голосовое)")
     await state.set_state(AddSound.waiting_for_file)
 
-import subprocess
-import os
-from aiogram.types import FSInputFile
-
 @router.message(AddSound.waiting_for_file)
 async def get_file(message: types.Message, state: FSMContext, bot: Bot):
     file_id = None
-
     if message.voice:
         file_id = message.voice.file_id
-
-    elif message.audio or (message.document and message.document.mime_type and 'audio' in message.document.mime_type):
-        # Скачиваем аудиофайл
-        file = message.audio or message.document
-        tg_file = await bot.get_file(file.file_id)
-        input_path = f"/tmp/{file.file_id}.mp3"
-        output_path = f"/tmp/{file.file_id}.ogg"
-        await bot.download_file(tg_file.file_path, destination=input_path)
-
-        # Конвертируем MP3 → OGG (голосовое)
-        subprocess.run([
-            "ffmpeg", "-i", input_path,
-            "-c:a", "libopus", "-b:a", "32k",
-            "-vbr", "on", output_path
-        ], check=True, capture_output=True)
-
-        # Отправляем как голосовое, получаем file_id и сразу удаляем
-        sent = await bot.send_voice(chat_id=message.chat.id, voice=FSInputFile(output_path))
-        file_id = sent.voice.file_id
-        await bot.delete_message(chat_id=message.chat.id, message_id=sent.message_id)
-
-        # Удаляем временные файлы
-        os.remove(input_path)
-        os.remove(output_path)
-
+    elif message.audio:
+        file_id = message.audio.file_id
+    elif message.document and message.document.mime_type and 'audio' in message.document.mime_type:
+        file_id = message.document.file_id
     else:
         await message.answer("❌ Отправь аудиофайл (MP3) или голосовое!")
         return
 
     if not file_id:
-        await message.answer("❌ Не удалось обработать файл.")
+        await message.answer("❌ Не удалось получить файл.")
         return
 
     data = await state.get_data()
     name = data['name']
     add_sound(name, file_id, message.from_user.id)
-    await message.answer(f"✅ Звук «{name}» добавлен как голосовое!\nПроверь: @MellstroyMP3_bot {name}")
+    await message.answer(f"✅ Звук «{name}» добавлен!\nПроверь: @MellstroyMP3_bot {name}")
     await state.clear()
-    
+
 # ===== ДОБАВЛЕНИЕ АДМИНА =====
 @router.message(AddAdmin.waiting_for_user_id)
 async def get_admin_id(message: types.Message, state: FSMContext):
@@ -560,12 +526,11 @@ async def get_admin_level_state(message: types.Message, state: FSMContext):
     except:
         await message.answer("❌ Отправь число 1, 2 или 3!")
 
-# ===== ИНЛАЙН-ПОИСК =====
+# ===== ИНЛАЙН-ПОИСК (АУДИО) =====
 @router.inline_query()
 async def inline_search(inline_query: types.InlineQuery, bot: Bot):
     user_id = inline_query.from_user.id
 
-    # Админы пропускаются без проверки подписки
     if get_admin_level(user_id) == 0:
         try:
             member = await bot.get_chat_member(CHANNEL_USERNAME, user_id)
@@ -587,9 +552,9 @@ async def inline_search(inline_query: types.InlineQuery, bot: Bot):
     results = []
     for sound_id, name, file_id in sounds[:50]:
         results.append(
-            InlineQueryResultCachedVoice(
+            InlineQueryResultCachedAudio(
                 id=str(sound_id),
-                voice_file_id=file_id,
+                audio_file_id=file_id,
                 title=name
             )
         )
