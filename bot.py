@@ -477,26 +477,47 @@ async def get_name(message: types.Message, state: FSMContext):
     await message.answer("📁 Отправь звук (MP3, аудиофайл или голосовое)")
     await state.set_state(AddSound.waiting_for_file)
 
+import subprocess
+import os
+from aiogram.types import FSInputFile
+
 @router.message(AddSound.waiting_for_file)
 async def get_file(message: types.Message, state: FSMContext, bot: Bot):
     file_id = None
+
     if message.voice:
         file_id = message.voice.file_id
-    elif message.audio:
-        # Отправляем аудио как голосовое в тот же чат через bot.send_voice
-        sent = await bot.send_voice(chat_id=message.chat.id, voice=message.audio.file_id)
+
+    elif message.audio or (message.document and message.document.mime_type and 'audio' in message.document.mime_type):
+        # Скачиваем аудиофайл
+        file = message.audio or message.document
+        tg_file = await bot.get_file(file.file_id)
+        input_path = f"/tmp/{file.file_id}.mp3"
+        output_path = f"/tmp/{file.file_id}.ogg"
+        await bot.download_file(tg_file.file_path, destination=input_path)
+
+        # Конвертируем MP3 → OGG (голосовое)
+        subprocess.run([
+            "ffmpeg", "-i", input_path,
+            "-c:a", "libopus", "-b:a", "32k",
+            "-vbr", "on", output_path
+        ], check=True, capture_output=True)
+
+        # Отправляем как голосовое, получаем file_id и сразу удаляем
+        sent = await bot.send_voice(chat_id=message.chat.id, voice=FSInputFile(output_path))
         file_id = sent.voice.file_id
         await bot.delete_message(chat_id=message.chat.id, message_id=sent.message_id)
-    elif message.document and message.document.mime_type and 'audio' in message.document.mime_type:
-        sent = await bot.send_voice(chat_id=message.chat.id, voice=message.document.file_id)
-        file_id = sent.voice.file_id
-        await bot.delete_message(chat_id=message.chat.id, message_id=sent.message_id)
+
+        # Удаляем временные файлы
+        os.remove(input_path)
+        os.remove(output_path)
+
     else:
         await message.answer("❌ Отправь аудиофайл (MP3) или голосовое!")
         return
 
     if not file_id:
-        await message.answer("❌ Не удалось конвертировать в голосовое.")
+        await message.answer("❌ Не удалось обработать файл.")
         return
 
     data = await state.get_data()
