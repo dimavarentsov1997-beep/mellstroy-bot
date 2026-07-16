@@ -62,7 +62,7 @@ def init_db():
         )
     ''')
     
-    # Удаляем все звуки с пустым названием
+    # Удаляем ВСЕ записи с пустым именем
     cursor.execute("DELETE FROM sounds WHERE name IS NULL OR name = ''")
     
     cursor.execute('INSERT OR IGNORE INTO admins (user_id, username, level) VALUES (?, ?, ?)',
@@ -83,8 +83,11 @@ def add_sound(name, file_id, added_by):
 def search_sounds(query):
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
-    cursor.execute('SELECT id, name, file_id FROM sounds WHERE LOWER(name) LIKE LOWER(?) ORDER BY usage_count DESC LIMIT 50',
-                   (f'%{query}%',))
+    # Исключаем пустые имена прямо в SQL
+    cursor.execute(
+        "SELECT id, name, file_id FROM sounds WHERE name IS NOT NULL AND name != '' AND LOWER(name) LIKE LOWER(?) ORDER BY usage_count DESC LIMIT 50",
+        (f'%{query}%',)
+    )
     results = cursor.fetchall()
     conn.close()
     return results
@@ -92,7 +95,8 @@ def search_sounds(query):
 def get_all_sounds():
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
-    cursor.execute('SELECT id, name, file_id FROM sounds ORDER BY usage_count DESC')
+    # Исключаем пустые имена
+    cursor.execute("SELECT id, name, file_id FROM sounds WHERE name IS NOT NULL AND name != '' ORDER BY usage_count DESC")
     results = cursor.fetchall()
     conn.close()
     return results
@@ -531,23 +535,17 @@ async def get_admin_level_state(message: types.Message, state: FSMContext):
     except:
         await message.answer("❌ Отправь число 1, 2 или 3!")
 
-# ===== ИНЛАЙН-ПОИСК (АУДИО, БЕЗ ПРОВЕРКИ ПОДПИСКИ) =====
+# ===== ИНЛАЙН-ПОИСК (АУДИО, БЕЗ ПУСТЫХ ИМЁН) =====
 @router.inline_query()
 async def inline_search(inline_query: types.InlineQuery, bot: Bot):
     user_id = inline_query.from_user.id
     add_user(user_id, inline_query.from_user.username, inline_query.from_user.first_name)
 
-    # Проверка подписки временно отключена для стабильности
-    # if get_admin_level(user_id) == 0:
-    #     ... (закомментировано)
-
     query = inline_query.query.strip()
     sounds = search_sounds(query) if query else get_all_sounds()
 
     results = []
-    for sound_id, name, file_id in sounds[:50]:
-        if not name:
-            name = "Без названия"
+    for sound_id, name, file_id in sounds:
         results.append(
             InlineQueryResultCachedAudio(
                 id=str(sound_id),
